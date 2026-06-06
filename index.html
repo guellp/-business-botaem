@@ -4,17 +4,17 @@
     <script>const CORRECT_PASSCODE = "123459"; try{if(localStorage.getItem("salim_passcode")!==CORRECT_PASSCODE){location.replace("./lock.html");}}catch(e){}</script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="사업 Botaem - 스마트하고 쉽고 편리하게 맞춤 혜택 전국 지원금 실시간 매칭 플랫폼.">
-    <meta name="keywords" content="사업, 복지, 혜택, 지원금, 다자녀, 보탬">
+    <meta name="description" content="사업 Botaem - 소상공인, 자영업자 및 중소기업을 위한 정책자금, 보증대출, 지원사업 실시간 맞춤 매칭 플랫폼.">
+    <meta name="keywords" content="사업보탬, 소상공인, 정책자금, 신용보증, 중소기업지원, 보증대출, 창업지원, 지원금">
     
     <!-- Open Graph 태그 (소셜 공유 최적화) -->
     <meta property="og:type" content="website">
-    <meta property="og:title" content="사업 Botaem | 정부지원금 실시간 매칭">
-    <meta property="og:description" content="전국 1만 건+ 정부지원금을 한눈에! 내가 받을 수 있는 지원금을 쉽고 빠르게 매칭해 보세요.">
+    <meta property="og:title" content="사업 Botaem | 소상공인·중소기업 정책자금 실시간 매칭">
+    <meta property="og:description" content="소상공인 및 중소기업을 위한 전국 정책자금과 보증대출 정보를 한눈에! 내 사업에 맞는 지원 혜택을 쉽고 빠르게 매칭해 보세요.">
     <meta property="og:url" content="https://guellp.github.io/business-botaem-/">
     <meta property="og:image" content="https://guellp.github.io/business-botaem-/logo_kakao.png?v=3">
 
-    <title>사업 Botaem | 맞춤 지원금 매칭</title>
+    <title>사업 Botaem | 소상공인·중소기업 맞춤 정책자금 매칭</title>
     
     <!-- PapaParse CDN (로컬 CSV 파싱을 위함) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
@@ -779,8 +779,8 @@
                     <img src="logo.png?v=7" alt="사업 Botaem 로고" class="hero-brand-logo">
                     <span class="hero-brand-name">사업<span class="brand-point">Botaem</span></span>
                 </div>
-                <p class="hero-subtitle" id="sub-title-text">우리 집 가계에 <span class="highlight-botaem">보탬</span>이 되는 맞춤 혜택</p>
-                <h1 class="hero-title" id="main-title-text">전국 지원금<br class="mobile-br"> <span>실시간 매칭</span></h1>
+                <p class="hero-subtitle" id="sub-title-text">내 사업을 든든하게 지원하는 <span class="highlight-botaem">맞춤형 정책자금 & 보증대출</span></p>
+                <h1 class="hero-title" id="main-title-text">소상공인·기업 정책지원<br class="mobile-br"> <span>실시간 매칭</span></h1>
                 <div class="hero-actions">
                     <a href="#search-filter-area" class="btn btn-primary btn-lg">시작하기</a>
                 </div>
@@ -832,10 +832,10 @@
                 </div>
                 <!-- 텍스트 검색 -->
                 <div class="filter-item">
-                    <label class="filter-label" for="search-input">서비스명 또는 지원대상 검색</label>
+                    <label class="filter-label" for="search-input">지원사업명 또는 상품명 검색</label>
                     <div class="search-row">
                         <div class="search-wrapper">
-                            <input type="text" id="search-input" class="form-input" placeholder="예: 청년, 다자녀, 에너지바우처, 임산부 등 입력...">
+                            <input type="text" id="search-input" class="form-input" placeholder="예: 소상공인, 보증서, 창업, 일자리, 운전자금 등 입력...">
                         </div>
                         <button id="btn-reset" class="btn-reset" type="button">조건 초기화</button>
                     </div>
@@ -22169,7 +22169,7 @@
             totalCountSpan.textContent = totalResults.toLocaleString();
 
             if (totalResults === 0) {
-                cardsContainer.innerHTML = '<div class="status-message">조건에 부합하는 맞춤 혜택 정보가 없습니다. 다른 조건으로 검색해 보세요.</div>';
+                cardsContainer.innerHTML = '<div class="status-message">조건에 부합하는 정책자금 및 지원사업 정보가 없습니다. 다른 조건으로 검색해 보세요.</div>';
                 currentCountSpan.textContent = "0";
                 loaderArea.style.display = "none";
                 return;
@@ -22195,8 +22195,8 @@
                 card.innerHTML = `
                     <div class="card-item-header">
                         <div class="card-badge-group">
-                            <span class="badge-sector">${item['서비스분야'] || '일반복지'}</span>
-                            <span class="badge-type">${item['지원구분'] || '기타'}</span>
+                            <span class="badge-sector">${item['서비스분야'] || '기타지원'}</span>
+                            <span class="badge-type">${item['지원구분'] || '기타지원'}</span>
                         </div>
                         <span class="card-authority">${item['소관기관명'] || '소관 부서'} | ${regionText}</span>
                     </div>
