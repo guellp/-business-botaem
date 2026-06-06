@@ -20466,11 +20466,12 @@
                 if (selectedMinistries.length > 0 && !selectedMinistries.includes(item['소관부처'])) return false;
                 if (selectedAgencies.length > 0 && !selectedAgencies.includes(item['수행기관'])) return false;
                 
-                // 서비스명 또는 지원대상 검색 필드만 매칭
+                // 서비스명, 지원대상 또는 소관부처 검색 매칭
                 if (searchQuery) {
                     const sName = (item['서비스명'] || '').toLowerCase();
                     const sTarget = (item['지원대상'] || '').toLowerCase();
-                    if (!sName.includes(searchQuery) && !sTarget.includes(searchQuery)) {
+                    const sMinistry = (item['소관부처'] || '').toLowerCase();
+                    if (!sName.includes(searchQuery) && !sTarget.includes(searchQuery) && !sMinistry.includes(searchQuery)) {
                         return false;
                     }
                 }
