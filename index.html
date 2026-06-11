@@ -20870,7 +20870,7 @@
             const searchQuery = searchInput.value.trim().toLowerCase();
 
             filteredData = allData.filter(item => {
-                if (selectedSidos.length > 0 && !selectedSidos.includes(item['시도'])) return false;
+                if (selectedSidos.length > 0 && !selectedSidos.includes(item['시도']) && item['시도'] !== '전국') return false;
                 if (selectedGuguns.length > 0 && !selectedGuguns.includes(item['구군'])) return false;
                 if (selectedSectors.length > 0 && !selectedSectors.includes(item['서비스분야'])) return false;
                 if (selectedTypes.length > 0 && !selectedTypes.includes(item['지원구분'])) return false;
