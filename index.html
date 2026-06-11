@@ -815,12 +815,12 @@
                             <div class="custom-select-options" id="options-gugun"></div>
                         </div>
                     </div>
-                    <!-- 서비스 분야 -->
+                    <!-- 소관부처 선택 -->
                     <div class="filter-item">
-                        <label class="filter-label">서비스 분야 (중복 가능)</label>
-                        <div class="custom-select-container" id="container-sector">
-                            <button type="button" class="custom-select-trigger">전체 서비스분야</button>
-                            <div class="custom-select-options" id="options-sector"></div>
+                        <label class="filter-label">3단계: 소관부처 선택 (중복 가능)</label>
+                        <div class="custom-select-container" id="container-agency">
+                            <button type="button" class="custom-select-trigger">전체 소관부처</button>
+                            <div class="custom-select-options" id="options-agency"></div>
                         </div>
                     </div>
                     <!-- 지원 형태 -->
@@ -26084,7 +26084,7 @@
         const statusBadge = document.getElementById('connection-status');
         const containerSido = document.getElementById('container-sido');
         const containerGugun = document.getElementById('container-gugun');
-        const containerSector = document.getElementById('container-sector');
+        const containerAgency = document.getElementById('container-agency');
         const containerType = document.getElementById('container-type');
         const searchInput = document.getElementById('search-input');
         const btnReset = document.getElementById('btn-reset');
@@ -26092,6 +26092,64 @@
         const totalCountSpan = document.getElementById('total-count');
         const currentCountSpan = document.getElementById('current-count');
         const btnLoadMore = document.getElementById('btn-load-more');
+        const loaderArea = document.getElementById('loader-area');
+
+        // 커스텀 드롭다운 열기/닫기 토글
+        document.addEventListener('click', function(e) {
+            const trigger = e.target.closest('.custom-select-trigger');
+            if (trigger) {
+                e.stopPropagation();
+                const container = trigger.parentElement;
+                
+                // 구군의 경우 disabled 면 작동 금지
+                if (container.id === 'container-gugun' && trigger.hasAttribute('disabled')) {
+                    return;
+                }
+
+                // 다른 열려있는 드롭다운 모두 닫기
+                document.querySelectorAll('.custom-select-container').forEach(c => {
+                    if (c !== container) c.classList.remove('open');
+                });
+                
+                container.classList.toggle('open');
+            } else {
+                // 외부 클릭 시 모든 드롭다운 닫기
+                document.querySelectorAll('.custom-select-container').forEach(c => {
+                    c.classList.remove('open');
+                });
+            }
+        });
+
+        // 드롭다운 옵션 내부 클릭 시 닫히지 않도록 이벤트 전파 차단
+        document.addEventListener('click', function(e) {
+            if (e.target.closest('.custom-select-options')) {
+                e.stopPropagation();
+            }
+        });
+
+        // 선택된 값들을 수집하는 헬퍼 함수
+        function getSelectedValues(containerId) {
+            const container = document.getElementById(containerId);
+            if (!container) return [];
+            const checkedBoxes = container.querySelectorAll('.custom-select-options input[type="checkbox"]:checked');
+            return Array.from(checkedBoxes).map(cb => cb.value);
+        }
+
+        // 선택 완료 후 트리거 텍스트를 업데이트하는 함수
+        function updateTriggerText(containerId, defaultText) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            const trigger = container.querySelector('.custom-select-trigger');
+            const selected = getSelectedValues(containerId);
+            
+            if (selected.length === 0) {
+                trigger.textContent = defaultText;
+            } else if (selected.length === 1) {
+                trigger.textContent = selected[0];
+            } else {
+                trigger.textContent = `${selected[0]} 외 ${selected.length - 1}건`;
+            }
+        }
         const loaderArea = document.getElementById('loader-area');
 
         // 커스텀 드롭다운 열기/닫기 토글
@@ -26390,14 +26448,14 @@
         function applyFilters() {
             const selectedSidos = getSelectedValues('container-sido');
             const selectedGuguns = getSelectedValues('container-gugun');
-            const selectedSectors = getSelectedValues('container-sector');
+            const selectedAgencies = getSelectedValues('container-agency');
             const selectedTypes = getSelectedValues('container-type');
             const searchQuery = searchInput.value.trim().toLowerCase();
 
             filteredData = allData.filter(item => {
                 if (selectedSidos.length > 0 && !selectedSidos.includes(item['시도']) && item['시도'] !== '전국') return false;
                 if (selectedGuguns.length > 0 && !selectedGuguns.includes(item['구군'])) return false;
-                if (selectedSectors.length > 0 && !selectedSectors.includes(item['서비스분야'])) return false;
+                if (selectedAgencies.length > 0 && !selectedAgencies.includes(item['소관부처'])) return false;
                 if (selectedTypes.length > 0 && !selectedTypes.includes(item['지원구분'])) return false;
                 
                 if (searchQuery) {
@@ -26428,7 +26486,7 @@
             
             // 모든 트리거 텍스트 초기화
             updateTriggerText('container-sido', '전체 (시도)');
-            updateTriggerText('container-sector', '전체 서비스분야');
+            updateTriggerText('container-agency', '전체 소관부처');
             updateTriggerText('container-type', '전체 지원형태');
             
             // 구군 초기화
