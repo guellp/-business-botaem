@@ -26217,6 +26217,64 @@
                 e.stopPropagation();
                 const container = trigger.parentElement;
                 
+                // 구군의 경우 disabled 면 작동 금지
+                if (container.id === 'container-gugun' && trigger.hasAttribute('disabled')) {
+                    return;
+                }
+
+                // 다른 열려있는 드롭다운 모두 닫기
+                document.querySelectorAll('.custom-select-container').forEach(c => {
+                    if (c !== container) c.classList.remove('open');
+                });
+                
+                container.classList.toggle('open');
+            } else {
+                // 외부 클릭 시 모든 드롭다운 닫기
+                document.querySelectorAll('.custom-select-container').forEach(c => {
+                    c.classList.remove('open');
+                });
+            }
+        });
+
+        // 드롭다운 옵션 내부 클릭 시 닫히지 않도록 이벤트 전파 차단
+        document.addEventListener('click', function(e) {
+            if (e.target.closest('.custom-select-options')) {
+                e.stopPropagation();
+            }
+        });
+
+        // 선택된 값들을 수집하는 헬퍼 함수
+        function getSelectedValues(containerId) {
+            const container = document.getElementById(containerId);
+            if (!container) return [];
+            const checkedBoxes = container.querySelectorAll('.custom-select-options input[type="checkbox"]:checked');
+            return Array.from(checkedBoxes).map(cb => cb.value);
+        }
+
+        // 선택 완료 후 트리거 텍스트를 업데이트하는 함수
+        function updateTriggerText(containerId, defaultText) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            const trigger = container.querySelector('.custom-select-trigger');
+            const selected = getSelectedValues(containerId);
+            
+            if (selected.length === 0) {
+                trigger.textContent = defaultText;
+            } else if (selected.length === 1) {
+                trigger.textContent = selected[0];
+            } else {
+                trigger.textContent = `${selected[0]} 외 ${selected.length - 1}건`;
+            }
+        }
+        const loaderArea = document.getElementById('loader-area');
+
+        // 커스텀 드롭다운 열기/닫기 토글
+        document.addEventListener('click', function(e) {
+            const trigger = e.target.closest('.custom-select-trigger');
+            if (trigger) {
+                e.stopPropagation();
+                const container = trigger.parentElement;
+                
                 // 도시의 경우 disabled 면 작동 금지
                 if (container.id === 'container-city' && trigger.hasAttribute('disabled')) {
                     return;
@@ -26344,44 +26402,63 @@
         // 4. 필터 드롭다운 동적 생성
         // ==========================================
         function initFilters() {
-            // 1. 지역 목록 수집 및 렌더링
-            let regions = [...new Set(allData.map(item => item['지역']))].filter(Boolean).sort();
-            const hasNational = regions.includes('전국');
+            // 1. 시도 목록 수집 및 렌더링
+            let sidos = [...new Set(allData.map(item => item['시도']))].filter(Boolean).sort();
+            const hasNational = sidos.includes('전국');
             if (hasNational) {
-                regions = regions.filter(r => r !== '전국');
+                sidos = sidos.filter(s => s !== '전국');
             }
             
-            const optionsRegion = document.getElementById('options-region');
-            optionsRegion.innerHTML = '';
+            const optionsSido = document.getElementById('options-sido');
+            optionsSido.innerHTML = '';
             
             if (hasNational) {
-                createCheckboxOption(optionsRegion, '전국', '전국 (중앙/전국 단위 지원)', 'container-region', '전체 (지역)', handleRegionChange);
+                createCheckboxOption(optionsSido, '전국', '전국 (중앙/전국 단위 지원)', 'container-sido', '전체 (시도)', handleSidoChange);
             }
-            regions.forEach(region => {
-                createCheckboxOption(optionsRegion, region, region, 'container-region', '전체 (지역)', handleRegionChange);
+            sidos.forEach(sido => {
+                createCheckboxOption(optionsSido, sido, sido, 'container-sido', '전체 (시도)', handleSidoChange);
             });
 
             // 2. 소관부처 목록 수집 및 렌더링
-            const ministries = [...new Set(allData.map(item => item['소관부처']))].filter(Boolean).sort();
-            const optionsMinistry = document.getElementById('options-ministry');
-            optionsMinistry.innerHTML = '';
-            ministries.forEach(min => {
-                createCheckboxOption(optionsMinistry, min, min, 'container-ministry', '전체 소관부처', applyFilters);
-            });
-
-            // 3. 수행기관 목록 수집 및 렌더링
-            const agencies = [...new Set(allData.map(item => item['수행기관']))].filter(Boolean).sort();
+            const agencies = [...new Set(allData.map(item => item['소관부처']))].filter(Boolean).sort();
             const optionsAgency = document.getElementById('options-agency');
             optionsAgency.innerHTML = '';
             agencies.forEach(agency => {
-                createCheckboxOption(optionsAgency, agency, agency, 'container-agency', '전체 수행기관', applyFilters);
+                createCheckboxOption(optionsAgency, agency, agency, 'container-agency', '전체 소관부처', applyFilters);
             });
 
-            // 도시 비활성화 초기화
-            const triggerCity = document.getElementById('trigger-city');
-            triggerCity.textContent = '지역을 먼저 선택하세요';
-            triggerCity.disabled = true;
-            document.getElementById('options-city').innerHTML = '';
+            // 3. 지원구분 목록 수집 및 렌더링
+            const types = [...new Set(allData.map(item => item['지원구분']))].filter(Boolean).sort();
+            const optionsType = document.getElementById('options-type');
+            optionsType.innerHTML = '';
+            types.forEach(type => {
+                createCheckboxOption(optionsType, type, type, 'container-type', '전체 지원형태', applyFilters);
+            });
+
+            // 구군 비활성화 초기화
+            const triggerGugun = document.getElementById('trigger-gugun');
+            triggerGugun.textContent = '시도를 먼저 선택하세요';
+            triggerGugun.disabled = true;
+            document.getElementById('options-gugun').innerHTML = '';
+        }
+
+        // 체크박스 옵션을 생성하는 도우미 함수
+        function createCheckboxOption(parentEl, value, labelText, containerId, defaultText, changeCallback) {
+            const label = document.createElement('label');
+            label.className = 'custom-select-option';
+            
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.value = value;
+            
+            checkbox.addEventListener('change', () => {
+                updateTriggerText(containerId, defaultText);
+                if (changeCallback) changeCallback();
+            });
+            
+            label.appendChild(checkbox);
+            label.appendChild(document.createTextNode(labelText));
+            parentEl.appendChild(label);
         }
 
         // 체크박스 옵션을 생성하는 도우미 함수
@@ -26404,40 +26481,40 @@
         }
 
         // 4-A. 지역 변경시 하위 도시 드롭다운 동적 업데이트
-        function handleRegionChange() {
-            const selectedRegions = getSelectedValues('container-region');
-            const triggerCity = document.getElementById('trigger-city');
-            const optionsCity = document.getElementById('options-city');
+        function handleSidoChange() {
+            const selectedSidos = getSelectedValues('container-sido');
+            const triggerGugun = document.getElementById('trigger-gugun');
+            const optionsGugun = document.getElementById('options-gugun');
             
-            if (selectedRegions.length === 0) {
-                triggerCity.textContent = '지역을 먼저 선택하세요';
-                triggerCity.disabled = true;
-                optionsCity.innerHTML = '';
+            if (selectedSidos.length === 0) {
+                triggerGugun.textContent = '시도를 먼저 선택하세요';
+                triggerGugun.disabled = true;
+                optionsGugun.innerHTML = '';
                 applyFilters();
                 return;
             }
 
-            // 선택된 모든 지역에 소속된 도시 목록 추출
-            const filteredCities = allData
-                .filter(item => selectedRegions.includes(item['지역']))
-                .map(item => item['도시'])
+            // 선택된 모든 시도에 소속된 구군 목록 추출
+            const filteredGuguns = allData
+                .filter(item => selectedSidos.includes(item['시도']))
+                .map(item => item['구군'])
                 .filter(Boolean);
                 
-            const uniqueCities = [...new Set(filteredCities)].sort();
-            const cityList = uniqueCities.filter(c => c !== '전지역');
-            const hasAllRegion = uniqueCities.includes('전지역');
+            const uniqueGuguns = [...new Set(filteredGuguns)].sort();
+            const gugunList = uniqueGuguns.filter(g => g !== '전지역');
+            const hasAllRegion = uniqueGuguns.includes('전지역');
 
-            optionsCity.innerHTML = '';
+            optionsGugun.innerHTML = '';
             
             if (hasAllRegion) {
-                createCheckboxOption(optionsCity, '전지역', '전지역 (전 지역 해당 혜택)', 'container-city', '전체 도시', applyFilters);
+                createCheckboxOption(optionsGugun, '전지역', '전지역 (전 지역 해당 혜택)', 'container-gugun', '전체 구/군', applyFilters);
             }
-            cityList.forEach(city => {
-                createCheckboxOption(optionsCity, city, city, 'container-city', '전체 도시', applyFilters);
+            gugunList.forEach(gugun => {
+                createCheckboxOption(optionsGugun, gugun, gugun, 'container-gugun', '전체 구/군', applyFilters);
             });
             
-            triggerCity.disabled = false;
-            updateTriggerText('container-city', '전체 도시');
+            triggerGugun.disabled = false;
+            updateTriggerText('container-gugun', '전체 구/군');
             
             applyFilters();
         }
