@@ -5,7 +5,7 @@ echo ==================================================
 
 echo.
 echo [STEP 1] Downloading sheet data and updating password...
-python inject_sheet_data.py
+python inject_business_data.py
 if errorlevel 1 goto DATA_ERROR
 
 echo.

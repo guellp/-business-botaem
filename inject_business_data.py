@@ -13,6 +13,7 @@ import csv
 import json
 import re
 import urllib.request
+from datetime import datetime
 
 # UTF-8 출력 설정
 if sys.platform.startswith('win'):
@@ -21,7 +22,8 @@ if sys.platform.startswith('win'):
     sys.stderr = io.TextIOWrapper(sys.stderr.detach(), encoding='utf-8')
 
 BIZINFO_CSV_URL = 'https://docs.google.com/spreadsheets/d/1H7_gQ8m6YtYLiWKIkZ_O4LSf0mWwT3NAW-0yYbdq8No/export?format=csv&gid=1427303155'
-KOREG_CSV_URL = 'https://docs.google.com/spreadsheets/d/1H7_gQ8m6YtYLiWKIkZ_O4LSf0mWwT3NAW-0yYbdq8No/export?format=csv&gid=990868410'
+KOREG_NATIONAL_CSV_URL = 'https://docs.google.com/spreadsheets/d/1H7_gQ8m6YtYLiWKIkZ_O4LSf0mWwT3NAW-0yYbdq8No/export?format=csv&gid=990868410'
+KOREG_REGIONAL_CSV_URL = 'https://docs.google.com/spreadsheets/d/1H7_gQ8m6YtYLiWKIkZ_O4LSf0mWwT3NAW-0yYbdq8No/export?format=csv&gid=1214990494'
 HTML_FILE_PATH = 'index.html'
 
 def clean_support_type(raw_val):
@@ -76,14 +78,37 @@ def clean_koreg_sido(raw_sido):
     return get_norm_sido(s)
 
 def download_csv(url, name):
-    print(f"📥 구글 시트 [{name}] 데이터 다운로드 중... ({url})")
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
-    }
-    req = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(req, timeout=20) as response:
-        content = response.read().decode('utf-8')
-    return content
+    print(f"📥 구글 시트 [{name}] 데이터 gspread로 가져오는 중... ({url})")
+    
+    key_paths = [
+        r'C:\Users\bwj10\.gemini\안토 개발부장 총괄실\credentials.json',
+        r'C:\Users\bwj10\OneDrive\바탕 화면\AI_Agents\다니 디자인 에이전트\service_account.json',
+        r'C:\Users\bwj10\.gemini\antigravity\gspread_key.json',
+    ]
+    key_file = None
+    for kp in key_paths:
+        if os.path.exists(kp) and kp.endswith('.json'):
+            key_file = kp
+            break
+            
+    if not key_file:
+        raise FileNotFoundError("Service account key file not found for gspread.")
+
+    import gspread
+    from google.oauth2.service_account import Credentials
+    scopes = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+    creds = Credentials.from_service_account_file(key_file, scopes=scopes)
+    client = gspread.authorize(creds)
+    
+    SPREADSHEET_ID = '1H7_gQ8m6YtYLiWKIkZ_O4LSf0mWwT3NAW-0yYbdq8No'
+    sh = client.open_by_key(SPREADSHEET_ID)
+    ws = sh.worksheet(name)
+    
+    import io
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerows(ws.get_all_values())
+    return output.getvalue()
 
 def download_and_parse_sheet():
     parsed_records = []
@@ -173,18 +198,23 @@ def download_and_parse_sheet():
             elif any(k in prod_name or k in summary for k in ["바우처", "이용권", "현물"]):
                 support_type = "바우처/현물지원"
 
+            agency = row.get("소관부처/지자체", "").strip() or row.get("사업수행기관", "").strip() or "기타"
             record = {
                 "시도": norm_sido,
+                "지역": norm_sido,  # index.html 호환
                 "구군": norm_gugun,
+                "도시": norm_gugun,  # index.html 호환
                 "서비스명": prod_name,
-                "소관기관명": row.get("소관부처/지자체", "").strip() or row.get("사업수행기관", "").strip() or "기타",
+                "소관기관명": agency,
+                "소관부처": agency,  # index.html 호환
+                "수행기관": agency,  # index.html 호환
                 "서비스분야": sector,
                 "지원구분": support_type,
                 "신청기한": row.get("신청기간", "").strip(),
                 "지원내용": summary,
                 "지원대상": "소상공인 및 중소기업 (상세 조건은 개요 참조)",
                 "신청방법": method,
-                "정보수정일": ""
+                "정보수정일": row.get("수집일", "").strip() or datetime.now().strftime("%Y-%m-%d")
             }
             parsed_records.append(record)
         
@@ -193,50 +223,113 @@ def download_and_parse_sheet():
     except Exception as e:
         print(f"🚨 기업마당 데이터 처리 실패: {e}")
         
-    # 2. 신용보증재단 데이터 로드 및 파싱
+    # 2. 신용보증재단 데이터 로드 및 파싱 (신용보증재단 취합 탭만 반영)
     try:
-        koreg_content = download_csv(KOREG_CSV_URL, "신용보증재단")
-        lines = koreg_content.splitlines()
-        reader = csv.DictReader(lines)
-        koreg_rows = list(reader)
-        print(f"   📋 신용보증재단 CSV 레코드 개수: {len(koreg_rows)}")
+        import time
+        t_param = f"&t={int(time.time())}"
         
+        # 1) 신용보증재단 취합 (비대면 상품) 다운로드
+        national_content = download_csv(KOREG_NATIONAL_CSV_URL + t_param, "신용보증재단 취합")
+        try:
+            local_csv_nat = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'koreg_national_latest.csv')
+            with open(local_csv_nat, 'w', encoding='utf-8-sig') as f:
+                f.write(national_content)
+        except Exception as se:
+            print(f"   ⚠️ 전국 로컬 백업 저장 실패: {se}")
+
         koreg_count = 0
-        for row in koreg_rows:
+        
+        # 2) 신용보증재단 취합 상품 파싱 및 추가 (지역명 동적 매핑 반영)
+        lines_nat = national_content.splitlines()
+        reader_nat = csv.DictReader(lines_nat)
+        for row in reader_nat:
             prod_name = row.get("상품명", "").strip()
-            if not prod_name:
-                continue
+            if not prod_name: continue
+            
+            # 지역명 컬럼 우선, 없으면 재단명에서 추출
+            raw_sido = row.get("지역명", "").strip() or row.get("지역", "전국").strip()
+            norm_sido = get_norm_sido(raw_sido)
+            
+            # 재단명 컬럼 우선 사용 (예: "강원신용보증재단"), 없으면 소관부처, 없으면 자동 생성
+            agency = row.get("재단명", "").strip() or row.get("소관부처", "").strip() or f"{norm_sido}신용보증재단"
+            if norm_sido == "전국" and not row.get("재단명", "").strip():
+                agency = "신용보증재단중앙회"
                 
-            raw_sido = row.get("재단명", "").strip()
-            norm_sido = clean_koreg_sido(raw_sido)
-            
-            # 지원내용 결합
-            limit = row.get("지원한도", "-")
-            desc = row.get("상품설명", "")
-            unified_content = f"[지원한도] {limit}\n\n[상품특성] {row.get('상품특성', '-')}\n\n[상세설명]\n{desc}"
-            
-            # 신청방법 결합
-            fin = row.get("금융회사", "-")
-            unified_method = f"[취급 금융회사] {fin}\n\n해당 은행 모바일 앱 또는 보증드림 앱/홈페이지를 통해 신청 가능합니다."
+            unified_content = f"[지원한도] {row.get('지원한도', '-')}\n\n[지원대상] {row.get('상품특성', '') or row.get('상품특징', '-')}\n\n[상세설명]\n{row.get('상품설명', '')}"
+            unified_method = f"[취급 금융회사] {row.get('금융회사', '') or row.get('금융사', '-')}\n\n해당 은행 모바일 앱 또는 보증드림 앱/홈페이지를 통해 신청 가능합니다."
             
             record = {
                 "시도": norm_sido,
+                "지역": norm_sido,  # index.html 호환
                 "구군": "전지역",
+                "도시": "전지역",  # index.html 호환
                 "서비스명": prod_name,
-                "소관기관명": raw_sido,
+                "소관기관명": agency,
+                "소관부처": agency,  # index.html 호환
+                "수행기관": agency,  # index.html 호환
                 "서비스분야": "금융",
                 "지원구분": "대출/보증/금융",
                 "신청기한": row.get("시행기간", "").strip(),
                 "지원내용": unified_content.strip(),
-                "지원대상": row.get("상품특성", "").strip(),
+                "지원대상": (row.get("상품특성", "") or row.get("상품특징", "")).strip(),
                 "신청방법": unified_method.strip(),
-                "정보수정일": row.get("데이터수집일", "").strip()
+                "정보수정일": row.get("업데이트 일시", "") or row.get("데이터수집일", "")
             }
             parsed_records.append(record)
             koreg_count += 1
             
-        print(f"   📊 신용보증재단 데이터 파싱 성공: 총 {koreg_count}건 합산 완료")
+        print(f"   📊 신용보증재단 데이터 파싱 성공: 총 {koreg_count}건 합산 완료 (신용보증재단 취합 탭만 반영)")
         
+        # 3) 신용보증재단 (지역보증 상품) 다운로드 및 파싱
+        try:
+            regional_content = download_csv(KOREG_REGIONAL_CSV_URL + t_param, "신용보증재단")
+            try:
+                local_csv_reg = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'koreg_regional_latest.csv')
+                with open(local_csv_reg, 'w', encoding='utf-8-sig') as f:
+                    f.write(regional_content)
+            except Exception as se:
+                print(f"   ⚠️ 지역 로컬 백업 저장 실패: {se}")
+
+            regional_count = 0
+            lines_reg = regional_content.splitlines()
+            reader_reg = csv.DictReader(lines_reg)
+            for row in reader_reg:
+                prod_name = row.get("공고명", "").strip() or row.get("상품명", "").strip()
+                if not prod_name: continue
+                
+                raw_sido = row.get("지역명", "").strip() or row.get("지역", "전국").strip()
+                norm_sido = get_norm_sido(raw_sido)
+                
+                # 소관기관/지원기관 설정
+                agency = row.get("지원기관", "").strip() or row.get("소관부처", "").strip() or f"{norm_sido}신용보증재단"
+                
+                unified_content = f"[지원한도] {row.get('최대지원한도', '') or row.get('지원한도', '-')}\n\n[보증기간] {row.get('보증기간', '-')}\n\n[상환방법] {row.get('상환방법', '-')}\n\n[적용금리] {row.get('적용금리', '-')}\n\n[사업개요]\n{row.get('사업개요', '') or row.get('상품설명', '')}"
+                unified_method = f"[우대사항] {row.get('우대사항', '-')}\n\n[상세링크] {row.get('상세링크', '-')}\n\n신청 및 상세정보는 해당 지원기관({agency})을 통해 문의하세요."
+                
+                record = {
+                    "시도": norm_sido,
+                    "지역": norm_sido,
+                    "구군": "전지역",
+                    "도시": "전지역",
+                    "서비스명": prod_name,
+                    "소관기관명": agency,
+                    "소관부처": agency,
+                    "수행기관": agency,
+                    "서비스분야": "금융",
+                    "지원구분": "대출/보증/금융",
+                    "신청기한": (row.get("신청가능일", "") or row.get("시행기간", "")).strip(),
+                    "지원내용": unified_content.strip(),
+                    "지원대상": (row.get("지원대상", "") or row.get("상품특성", "")).strip(),
+                    "신청방법": unified_method.strip(),
+                    "정보수정일": row.get("수집일", "").strip() or row.get("업데이트 일시", "") or datetime.now().strftime("%Y-%m-%d")
+                }
+                # parsed_records.append(record) # 주석 처리: 지역보증 탭의 상품들은 직접 주입하지 않고 취합 탭 데이터만 반영
+                regional_count += 1
+                
+            print(f"   📊 신용보증재단 지역 상품 파싱 성공: 총 {regional_count}건 다운로드 완료 (주입 제외)")
+        except Exception as e_reg:
+            print(f"   ⚠️ 신용보증재단 지역 상품 처리 중 오류 발생: {e_reg}")
+            
     except Exception as e:
         print(f"🚨 신용보증재단 데이터 처리 실패: {e}")
         
@@ -244,10 +337,15 @@ def download_and_parse_sheet():
     return parsed_records
 
 def patch_js_filter_code(html_content):
-    if "container-sido" in html_content and "containerSido" in html_content:
-        print("   ℹ️  이미 다중 선택 필터 및 JS 로직 패치가 완료되어 있습니다. 패치를 건너뜁니다.")
-        return html_content
-    print("   🔧 HTML 및 JS 필터 영역 패치 시작...")
+    # 강제 일괄 치환으로 유령 코드들 정리
+    html_content = html_content.replace("container-sector", "container-agency")
+    html_content = html_content.replace("containerSector", "containerAgency")
+    html_content = html_content.replace("options-sector", "options-agency")
+    html_content = html_content.replace("optionsSector", "optionsAgency")
+    html_content = html_content.replace("서비스 분야 (중복 가능)", "3단계: 소관부처 선택 (중복 가능)")
+    html_content = html_content.replace("전체 서비스분야", "전체 소관부처")
+    
+    print("   🔧 HTML 및 JS 필터 영역 패치 시작 (소관부처 개편)...")
 
     # ===== CSS 레이아웃 및 커스텀 멀티셀렉트 스타일 주입 =====
     old_css_grid = """        .filter-grid {
@@ -386,12 +484,12 @@ def patch_js_filter_code(html_content):
                             <div class="custom-select-options" id="options-gugun"></div>
                         </div>
                     </div>
-                    <!-- 서비스 분야 -->
+                    <!-- 소관부처 선택 -->
                     <div class="filter-item">
-                        <label class="filter-label">서비스 분야 (중복 가능)</label>
-                        <div class="custom-select-container" id="container-sector">
-                            <button type="button" class="custom-select-trigger">전체 서비스분야</button>
-                            <div class="custom-select-options" id="options-sector"></div>
+                        <label class="filter-label">3단계: 소관부처 선택 (중복 가능)</label>
+                        <div class="custom-select-container" id="container-agency">
+                            <button type="button" class="custom-select-trigger">전체 소관부처</button>
+                            <div class="custom-select-options" id="options-agency"></div>
                         </div>
                     </div>
                     <!-- 지원 형태 -->
@@ -434,7 +532,7 @@ def patch_js_filter_code(html_content):
         const statusBadge = document.getElementById('connection-status');
         const containerSido = document.getElementById('container-sido');
         const containerGugun = document.getElementById('container-gugun');
-        const containerSector = document.getElementById('container-sector');
+        const containerAgency = document.getElementById('container-agency');
         const containerType = document.getElementById('container-type');
         const searchInput = document.getElementById('search-input');
         const btnReset = document.getElementById('btn-reset');
@@ -507,9 +605,9 @@ def patch_js_filter_code(html_content):
     else:
         dom_start = html_content.find("        // DOM 요소들 바인딩")
         if dom_start >= 0:
-            dom_end = html_content.find("btn-load-more');", dom_start)
+            dom_end = html_content.find("CHUNK_SIZE = 150;", dom_start)
             if dom_end >= 0:
-                html_content = html_content[:dom_start] + new_dom_binding + html_content[dom_end + len("btn-load-more');"):]
+                html_content = html_content[:dom_start] + new_dom_binding + "\n\n        " + html_content[dom_end:]
                 print("   ✅ JS DOM 바인딩을 강제 마커 슬라이싱 방식으로 리뉴얼 완료!")
 
     # ===== JS addEventListener 이벤트 핸들러 제거 =====
@@ -571,14 +669,14 @@ def patch_js_filter_code(html_content):
     new_apply_filters = """function applyFilters() {
             const selectedSidos = getSelectedValues('container-sido');
             const selectedGuguns = getSelectedValues('container-gugun');
-            const selectedSectors = getSelectedValues('container-sector');
+            const selectedAgencies = getSelectedValues('container-agency');
             const selectedTypes = getSelectedValues('container-type');
             const searchQuery = searchInput.value.trim().toLowerCase();
 
             filteredData = allData.filter(item => {
-                if (selectedSidos.length > 0 && !selectedSidos.includes(item['시도'])) return false;
+                if (selectedSidos.length > 0 && !selectedSidos.includes(item['시도']) && item['시도'] !== '전국') return false;
                 if (selectedGuguns.length > 0 && !selectedGuguns.includes(item['구군'])) return false;
-                if (selectedSectors.length > 0 && !selectedSectors.includes(item['서비스분야'])) return false;
+                if (selectedAgencies.length > 0 && !selectedAgencies.includes(item['소관부처'])) return false;
                 if (selectedTypes.length > 0 && !selectedTypes.includes(item['지원구분'])) return false;
                 
                 if (searchQuery) {
@@ -618,12 +716,12 @@ def patch_js_filter_code(html_content):
                 createCheckboxOption(optionsSido, sido, sido, 'container-sido', '전체 (시도)', handleSidoChange);
             });
 
-            // 2. 서비스분야 목록 수집 및 렌더링
-            const sectors = [...new Set(allData.map(item => item['서비스분야']))].filter(Boolean).sort();
-            const optionsSector = document.getElementById('options-sector');
-            optionsSector.innerHTML = '';
-            sectors.forEach(sector => {
-                createCheckboxOption(optionsSector, sector, sector, 'container-sector', '전체 서비스분야', applyFilters);
+            // 2. 소관부처 목록 수집 및 렌더링
+            const agencies = [...new Set(allData.map(item => item['소관부처']))].filter(Boolean).sort();
+            const optionsAgency = document.getElementById('options-agency');
+            optionsAgency.innerHTML = '';
+            agencies.forEach(agency => {
+                createCheckboxOption(optionsAgency, agency, agency, 'container-agency', '전체 소관부처', applyFilters);
             });
 
             // 3. 지원구분 목록 수집 및 렌더링
@@ -706,7 +804,7 @@ def patch_js_filter_code(html_content):
             
             // 모든 트리거 텍스트 초기화
             updateTriggerText('container-sido', '전체 (시도)');
-            updateTriggerText('container-sector', '전체 서비스분야');
+            updateTriggerText('container-agency', '전체 소관부처');
             updateTriggerText('container-type', '전체 지원형태');
             
             // 구군 초기화
@@ -719,26 +817,39 @@ def patch_js_filter_code(html_content):
             applyFilters();
         }"""
 
-    def safe_replace_func(old_name, new_code, end_marker_list):
+    def safe_replace_func(old_name, new_code, end_marker_list, alternative_names=None):
         nonlocal html_content
-        start_idx = html_content.find(f"function {old_name}()")
-        if start_idx >= 0:
-            end_idx = -1
-            for em in end_marker_list:
-                end_idx = html_content.find(em, start_idx)
+        names_to_try = [old_name]
+        if alternative_names:
+            names_to_try.extend(alternative_names)
+            
+        for name in names_to_try:
+            start_idx = html_content.find(f"function {name}()")
+            if start_idx >= 0:
+                end_idx = -1
+                for em in end_marker_list:
+                    end_idx = html_content.find(em, start_idx)
+                    if end_idx >= 0:
+                        end_idx += len(em)
+                        break
                 if end_idx >= 0:
-                    end_idx += len(em)
-                    break
-            if end_idx >= 0:
-                html_content = html_content[:start_idx] + new_code + html_content[end_idx:]
-                print(f"   ✅ {old_name}() 함수 패치 성공!")
-                return True
+                    html_content = html_content[:start_idx] + new_code + html_content[end_idx:]
+                    print(f"   ✅ {name}() (-> {old_name}()) 함수 패치 성공!")
+                    return True
         print(f"   ⚠️ {old_name}() 마커를 찾지 못했습니다.")
         return False
 
     safe_replace_func("applyFilters", new_apply_filters, ["renderCards();\n        }", "renderCards();\r\n        }"])
-    safe_replace_func("initFilters", new_init_filters, ["selectGugun.disabled = true;\n        }", "selectGugun.disabled = true;\r\n        }"])
-    safe_replace_func("handleSidoChange", new_handle_sido, ["applyFilters();\n        }", "applyFilters();\r\n        }"])
+    safe_replace_func("initFilters", new_init_filters, [
+        "document.getElementById('options-city').innerHTML = '';\n        }",
+        "document.getElementById('options-city').innerHTML = '';\r\n        }",
+        "selectGugun.disabled = true;\n        }",
+        "selectGugun.disabled = true;\r\n        }"
+    ])
+    safe_replace_func("handleSidoChange", new_handle_sido, [
+        "applyFilters();\n        }",
+        "applyFilters();\r\n        }"
+    ], alternative_names=["handleRegionChange"])
     safe_replace_func("resetFilters", new_reset_filters, ["applyFilters();\n        }", "applyFilters();\r\n        }"])
 
     return html_content
