@@ -78,6 +78,7 @@ def scrape_national_products():
                             '상품특성': item.get('prdChrc', '소상공인').strip(),
                             '지원한도': item.get('lmtAmt', '-').strip(),
                             '상품설명': item.get('prdDesc', '').strip(),
+                            '수집일': TODAY
                         })
                     break
             except Exception as e:
@@ -99,7 +100,8 @@ def scrape_national_products():
             '금융회사': p['금융회사'] if p['금융회사'] != '-' else '협약 시중은행',
             '상품특성': p['상품특성'],
             '지원한도': p['지원한도'],
-            '상품설명': p['상품설명']
+            '상품설명': p['상품설명'],
+            '수집일': p.get('수집일', TODAY)
         })
     return refined
 
@@ -251,7 +253,8 @@ def scrape_regional_products():
             '금융회사': bank_val,
             '상품특성': parsed.get('지원대상', '소상공인등'),
             '지원한도': parsed.get('지원한도', '-'),
-            '상품설명': desc_full.strip()
+            '상품설명': desc_full.strip(),
+            '수집일': TODAY
         })
         time.sleep(0.3) # 서버 부하 방지용 딜레이
         
@@ -307,8 +310,8 @@ def update_google_sheet(products, sheet_name):
         ws = sh.worksheet(sheet_name)
         
         ws.clear()
-        headers = ['지역', '상품명', '시행기간', '금융회사', '상품특성', '지원한도', '상품설명']
-        rows = [headers] + [[p.get(h, '') for h in headers] for p in products]
+        headers = ['지역', '상품명', '시행기간', '금융회사', '상품특성', '지원한도', '상품설명', '수집일']
+        rows = [headers] + [[p.get(h, TODAY if h == '수집일' else '') for h in headers] for p in products]
         ws.update(rows, value_input_option='RAW')
         print(f"   ✅ 구글시트 [{sheet_name}] 탭 업로드 완료! (총 {len(products)}행)")
         return True
@@ -334,7 +337,13 @@ if __name__ == '__main__':
     out_csv_national = os.path.join(os.path.dirname(__file__), 'koreg_national_latest.csv')
     out_csv_regional = os.path.join(os.path.dirname(__file__), 'koreg_regional_latest.csv')
     
-    headers = ['지역', '상품명', '시행기간', '금융회사', '상품특성', '지원한도', '상품설명']
+    # 딕셔너리 키 누락 방어
+    for p in national_prods:
+        if '수집일' not in p: p['수집일'] = TODAY
+    for p in regional_prods:
+        if '수집일' not in p: p['수집일'] = TODAY
+        
+    headers = ['지역', '상품명', '시행기간', '금융회사', '상품특성', '지원한도', '상품설명', '수집일']
     
     with open(out_csv_national, 'w', newline='', encoding='utf-8-sig') as f:
         writer = csv.DictWriter(f, fieldnames=headers)

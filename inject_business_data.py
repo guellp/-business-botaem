@@ -77,6 +77,16 @@ def clean_koreg_sido(raw_sido):
     s = raw_sido.replace("신용보증재단", "").strip()
     return get_norm_sido(s)
 
+def format_date_only(raw_date):
+    if not raw_date:
+        return ""
+    raw_date = raw_date.strip()
+    match = re.search(r'(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})', raw_date)
+    if match:
+        year, month, day = match.groups()
+        return f"{year}-{int(month):02d}-{int(day):02d}"
+    return raw_date
+
 def download_csv(url, name):
     print(f"📥 구글 시트 [{name}] 데이터 gspread로 가져오는 중... ({url})")
     
@@ -214,7 +224,7 @@ def download_and_parse_sheet():
                 "지원내용": summary,
                 "지원대상": "소상공인 및 중소기업 (상세 조건은 개요 참조)",
                 "신청방법": method,
-                "정보수정일": row.get("수집일", "").strip() or datetime.now().strftime("%Y-%m-%d")
+                "정보수정일": format_date_only(row.get("수집일", "").strip() or datetime.now().strftime("%Y-%m-%d"))
             }
             parsed_records.append(record)
         
@@ -273,7 +283,7 @@ def download_and_parse_sheet():
                 "지원내용": unified_content.strip(),
                 "지원대상": (row.get("상품특성", "") or row.get("상품특징", "")).strip(),
                 "신청방법": unified_method.strip(),
-                "정보수정일": row.get("업데이트 일시", "") or row.get("데이터수집일", "")
+                "정보수정일": format_date_only(row.get("업데이트 일시", "") or row.get("데이터수집일", "") or datetime.now().strftime("%Y-%m-%d"))
             }
             parsed_records.append(record)
             koreg_count += 1
@@ -334,6 +344,14 @@ def download_and_parse_sheet():
         print(f"🚨 신용보증재단 데이터 처리 실패: {e}")
         
     print(f"   🏆 최종 융합된 데이터 레코드 수: {len(parsed_records)}건")
+    
+    # URL 주소 삭제 로직 추가 (유저 요청)
+    url_pattern = re.compile(r'https?://[^\s<>"\(\)\[\]\{\}]+|www\.[^\s<>"\(\)\[\]\{\}]+')
+    for record in parsed_records:
+        for key, value in record.items():
+            if isinstance(value, str):
+                record[key] = url_pattern.sub('', value).strip()
+                
     return parsed_records
 
 def patch_js_filter_code(html_content):
